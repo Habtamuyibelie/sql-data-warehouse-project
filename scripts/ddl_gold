@@ -1,0 +1,71 @@
+
+create view gold.dim_customers as
+SELECT 
+row_number() over(order by cst_id) as customer_key,
+	ci.cst_id as customer_id, 
+	ci.cst_key as customer_number, 
+	ci.cst_firstname as first_name,
+	ci.cst_lastname as last_name,
+	la.cntry as country,
+	ci.cst_marital_status as marital_status, 
+    case when ci.cst_gndr!='N\A' then ci.cst_gndr --crm is the master of gender info and did data integration
+		else coalesce(ca.gen  ,'N\A')
+		end as gender,
+		ca.bdate as birthdate,
+	ci.cst_create_date as create_date
+FROM silver.crm_cust_info ci LEFT JOIN silver.erp_cust_az12 ca on ci.cst_key= ca.cid
+left join silver.erp_loc_a101 la on ci.cst_key = la.cid 
+
+
+---gold products
+
+
+create view gold.dim_products as
+SELECT 
+    row_number() over(order by pn.prd_start_dt,pn.prd_key  ) as product_key,
+	pn.prd_id as product_id, 
+	pn.prd_key as product_number,
+	pn.prd_nm as product_name,
+	pn.cat_id as catagory_id,
+	pc.cat as catagory,
+	pc.subcat as subcatagory,
+	pc.maintenance,
+	pn.prd_cost as cost, 
+	pn.prd_line as product_line,
+	pn.prd_start_dt AS start_date
+FROM silver.crm_prd_info pn LEFT JOIN silver.erp_px_cat_g1v2 pc
+ON pn.cat_id=pc.id
+WHERE pn.prd_end_dt IS NULL  --filter out all historical data
+
+
+select * from gold.dim_products
+
+---gold salses 
+
+
+create view gold.dim_fact_sales as
+SELECT 
+	sd.sls_ord_num as order_number,
+	pr.product_key ,
+	cu.customer_key,
+	sd.sls_order_dt order_date,
+	sd.sls_ship_dt as shipping_date,
+	sd.sls_due_dt as due_date,
+	sd.sls_sales as sales_amount, 
+	sd.sls_quantity as quantity,
+	sd.sls_price  
+FROM silver.crm_sales_details sd LEFT JOIN
+gold.dim_products pr on sd.sls_prd_key= pr.product_number 
+left join gold.dim_customers cu on sd.sls_cust_id= cu.customer_id
+
+--forien key integrity at  dimensions
+SELECT * FROM gold.dim_fact_sales s left join gold.dim_customers c 
+on s.customer_key=c.customer_key 
+left join gold.dim_products p on p.product_key=s.product_key
+where p.product_key is null 
+
+
+
+
+
+
